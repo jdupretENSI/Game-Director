@@ -1,49 +1,90 @@
+using System;
 using System.Collections.Generic;
+using JetBrains.Annotations;
 using UnityEngine;
+using UnityEngine.Events;
 
 public class GameDirector : MonoBehaviour
 {
-    private List<Actions> _actions;
-    private List<Blackboard> _blackboards;
-
-    private float Normalise( float current, float max, float min = 0)
-    {
-        return (current - min) / max;
-    }
-}
-
-public class Blackboard
-{
-    private readonly GameObject _self; // Whose blackboard is this
-    private Transform _healthStation { get; }
-    private Transform _staminaStation { get; }
-    private Transform _hungerStation { get; }
-    private float _health { get; set; } // Their stats
-    private float _maxHealth { get; set; } // Their stats
-    private float _stamina { get; set; } // Their stats
-    private float _maxStamina { get; set; } // Their stats
-    private float _hunger { get; set; } // Their stats
-    private float _maxHunger { get; set; } // Their stats
-    private float _distanceToHealth => Vector3.Distance(_self.transform.position, _healthStation.position);
-    private float _distanceToStamina => Vector3.Distance(_self.transform.position, _staminaStation.position);
-    private float _distanceToHunger => Vector3.Distance(_self.transform.position, _hungerStation.position);
+    // TODO: Maybe replace with hashset
+    private readonly List<Blackboard> _blackboards = new();
     
+    private float _gamePriority, _restPriority, _eatPriority, _relievePriority;
     
-    public Blackboard(GameObject self, Transform healthStation, Transform staminaStation, Transform hungerStation, float health, float maxHealth, float stamina, float maxStamina, float hunger, float maxHunger)
-    {
-        _self = self;
-        _healthStation = healthStation;
-        _staminaStation = staminaStation;
-        _hungerStation = hungerStation;
-        _health = health;
-        _maxHealth = maxHealth;
-        _stamina = stamina;
-        _maxStamina = maxStamina;
-        _hunger = hunger;
-        _maxHunger = maxHunger;
-    }
-}
+    public UnityEvent OnGameEvent;
+    public UnityEvent OnRestEvent;
+    public UnityEvent OnEatEvent;
+    public UnityEvent OnRelieveEvent;
 
-public class Actions
-{
+    [SerializeField] private bool _debugLogPriority = false;
+
+    private void Update()
+    {
+
+        // Check each blackboard and see what they need atm and then tell them the best action to solve this situation
+
+        foreach (Blackboard bb in _blackboards)
+        {
+            _gamePriority = InverseNormalise(bb.Entertainment, bb.MaxEntertainment) 
+                * InverseNormalise(bb.DistanceToEntertainment, 40f);
+            _eatPriority = InverseNormalise(bb.Stomach, bb.MaxStomach) 
+                * InverseNormalise(bb.DistanceToFood, 40f);
+            
+            _relievePriority = Normalise(bb.Bladder, bb.MaxBladder) 
+                *  InverseNormalise(bb.DistanceToBathroom, 40f);
+            _restPriority = Normalise(bb.Exhaustion, bb.MaxExhaustion) 
+                * InverseNormalise(bb.DistanceToBed, 40f);
+            
+            float highestPriority = MathF.Max(_gamePriority,
+                MathF.Max(_eatPriority,
+                    MathF.Max(_relievePriority, _restPriority)));
+
+            if (_debugLogPriority)
+            {
+                string actionName = highestPriority switch
+                {
+                    _ when highestPriority == _gamePriority => "Gamerrr",
+                    _ when highestPriority == _restPriority => "Eepy",
+                    _ when highestPriority == _eatPriority => "Nom Nom",
+                    _ when highestPriority == _relievePriority => "Pissin Myself",
+                    _ => "Unknown"
+                };
+
+                Debug.Log($"{actionName} action has highest priority: {highestPriority}");
+            }
+            
+            // Invoke the appropriate UnityEvent based on the highest priority
+            if (highestPriority == _gamePriority)
+            {
+                OnGameEvent?.Invoke();
+            }
+            else if (highestPriority == _restPriority)
+            {
+                OnRestEvent?.Invoke();
+            }
+            else if (highestPriority == _eatPriority)
+            {
+                OnEatEvent?.Invoke();
+            }
+            else if (highestPriority == _relievePriority)
+            {
+                OnRelieveEvent?.Invoke();
+            }
+        }
+    }
+    
+    private static float Normalise(float current, float max, float min = 0)
+    {
+        if (max <= min) return -1;
+        return Mathf.Clamp01((current - min) / (max - min));
+    }
+
+    private static float InverseNormalise(float current, float max, float min = 0)
+    {
+        if (max <= min) return -1;
+        return Mathf.Clamp01(1 - (current - min) / (max - min));
+    }
+    
+    public void AddBlackboard(Blackboard blackboard) => _blackboards.Add(blackboard);
+    public void RemoveBlackboard(Blackboard blackboard) => _blackboards.Remove(blackboard);
 }
